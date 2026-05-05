@@ -155,14 +155,17 @@ function renderRecordsList() {
     .map((date) => {
       const rec = records[date];
       const exerciseMark = rec.exercise ? "o" : "-";
-      const fastingHours = calcFastingHoursForEndDate(date);
-      const fastingText = fastingHours != null ? `${fastingHours.toFixed(1)}시간` : "-";
-      return `<button class="record-item" data-date="${date}">
-        <strong>${date}</strong>
-        <span>체중: ${rec.weight ?? "-"}</span>
-        <span>운동: ${exerciseMark}</span>
-        <span>단식: ${fastingText}</span>
-      </button>`;
+      const fastingMinutes = calcFastingMinutesForEndDate(date);
+      const fastingText = fastingMinutes != null ? formatMinutesToKorean(fastingMinutes) : "-";
+      return `<div class="record-row">
+        <button class="record-item" data-date="${date}">
+          <strong>${date}</strong>
+          <span>체중: ${rec.weight ?? "-"}</span>
+          <span>운동: ${exerciseMark}</span>
+          <span>단식: ${fastingText}</span>
+        </button>
+        <button class="delete-record" data-date="${date}" aria-label="${date} 기록 삭제">X</button>
+      </div>`;
     })
     .join("");
 
@@ -174,6 +177,22 @@ function renderRecordsList() {
       form.date.value = date;
       fillForm(date);
       window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  });
+
+  document.querySelectorAll(".delete-record").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const date = btn.dataset.date;
+      delete records[date];
+      saveRecords(records);
+
+      if (currentEditDate === date) {
+        const fallbackDate = findLatestRecordDate() ?? formatDate(new Date());
+        currentEditDate = fallbackDate;
+        selectedDate = fallbackDate;
+        fillForm(fallbackDate);
+      }
+      renderAll();
     });
   });
 }
@@ -276,8 +295,8 @@ function renderCalendar() {
     const date = `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     const rec = records[date];
     const exercise = rec?.exercise ? `<span class="exercise-dot">o</span>` : "";
-    const fastHours = calcFastingHoursForEndDate(date);
-    const fastText = fastHours != null ? `<small>${fastHours.toFixed(1)}h</small>` : `<small></small>`;
+    const fastMinutes = calcFastingMinutesForEndDate(date);
+    const fastText = fastMinutes != null ? `<small>${formatMinutesToCompact(fastMinutes)}</small>` : `<small></small>`;
 
     cells += `<button class="cell day" data-date="${date}">
       <span class="day-number">${day}</span>
@@ -304,7 +323,7 @@ function renderCalendar() {
   });
 }
 
-function calcFastingHoursForEndDate(endDate) {
+function calcFastingMinutesForEndDate(endDate) {
   const endRec = records[endDate];
   if (!endRec?.fastEnd) return null;
 
@@ -314,25 +333,39 @@ function calcFastingHoursForEndDate(endDate) {
   const start = parseDateTime(startSource.date, startSource.fastStart);
   const end = parseDateTime(endDate, endRec.fastEnd);
   if (!start || !end || end <= start) return null;
-  return (end - start) / 3600000;
+  return Math.floor((end - start) / 60000);
 }
 
 function findStartSourceForEndDate(endDate) {
-  const prevDate = dateShift(endDate, -1);
-  const prevRec = records[prevDate];
-  if (prevRec?.fastStart) {
-    return { date: prevDate, fastStart: prevRec.fastStart };
-  }
-
-  const sortedDates = Object.keys(records).sort((a, b) => b.localeCompare(a));
-  for (const date of sortedDates) {
-    if (date >= endDate) continue;
-    const rec = records[date];
+  let targetDate = dateShift(endDate, -1);
+  for (let i = 0; i < 3650; i++) {
+    const rec = records[targetDate];
     if (rec?.fastStart) {
-      return { date, fastStart: rec.fastStart };
+      return { date: targetDate, fastStart: rec.fastStart };
     }
+    targetDate = dateShift(targetDate, -1);
   }
   return null;
+}
+
+function formatMinutesToKorean(totalMinutes) {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (minutes === 0) return `${hours}시간`;
+  return `${hours}시간 ${minutes}분`;
+}
+
+function formatMinutesToCompact(totalMinutes) {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (minutes === 0) return `${hours}h`;
+  return `${hours}h ${String(minutes).padStart(2, "0")}m`;
+}
+
+function findLatestRecordDate() {
+  const dates = Object.keys(records);
+  if (!dates.length) return null;
+  return dates.sort((a, b) => b.localeCompare(a))[0];
 }
 
 function renderMonthlySummary() {
