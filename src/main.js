@@ -323,29 +323,24 @@ function renderCalendar() {
   });
 }
 
-function calcFastingMinutesForEndDate(endDate) {
-  const endRec = records[endDate];
-  if (!endRec?.fastEnd) return null;
+function calcFastingMinutesForEndDate(date) {
+  const rec = records[date];
+  // 해당 날짜에 시작과 종료 시간이 모두 있을 때만 계산합니다.
+  if (!rec?.fastStart || !rec?.fastEnd) return null;
 
-  const startSource = findStartSourceForEndDate(endDate);
-  if (!startSource) return null;
+  const [startH, startM] = rec.fastStart.split(':').map(Number);
+  const [endH, endM] = rec.fastEnd.split(':').map(Number);
+  
+  let startTotal = startH * 60 + startM;
+  let endTotal = endH * 60 + endM;
 
-  const start = parseDateTime(startSource.date, startSource.fastStart);
-  const end = parseDateTime(endDate, endRec.fastEnd);
-  if (!start || !end || end <= start) return null;
-  return Math.floor((end - start) / 60000);
-}
-
-function findStartSourceForEndDate(endDate) {
-  let targetDate = dateShift(endDate, -1);
-  for (let i = 0; i < 3650; i++) {
-    const rec = records[targetDate];
-    if (rec?.fastStart) {
-      return { date: targetDate, fastStart: rec.fastStart };
-    }
-    targetDate = dateShift(targetDate, -1);
+  // 종료 시간이 시작 시간보다 숫자가 작으면 (예: 22시 시작, 10시 종료)
+  // 자동으로 다음날로 인식하여 24시간(1440분)을 더해줍니다.
+  if (endTotal < startTotal) {
+    endTotal += 1440;
   }
-  return null;
+
+  return endTotal - startTotal;
 }
 
 function formatMinutesToKorean(totalMinutes) {
