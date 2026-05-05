@@ -60,7 +60,7 @@ app.innerHTML = `
         <input id="monthPicker" type="month" />
       </div>
       <div id="calendar" class="calendar"></div>
-      <p class="hint">파란 o: 운동 기록 있음 / 단식시간: 전날 시작 ~ 오늘 종료 기준</p>
+      <p class="hint">파란 o: 운동 기록 있음 / 단식시간: 오늘 종료 - (어제 시작 우선, 없으면 최근 시작)</p>
     </section>
 
     <section class="card">
@@ -155,10 +155,13 @@ function renderRecordsList() {
     .map((date) => {
       const rec = records[date];
       const exerciseMark = rec.exercise ? "o" : "-";
+      const fastingHours = calcFastingHoursForEndDate(date);
+      const fastingText = fastingHours != null ? `${fastingHours.toFixed(1)}시간` : "-";
       return `<button class="record-item" data-date="${date}">
         <strong>${date}</strong>
         <span>체중: ${rec.weight ?? "-"}</span>
         <span>운동: ${exerciseMark}</span>
+        <span>단식: ${fastingText}</span>
       </button>`;
     })
     .join("");
@@ -305,14 +308,31 @@ function calcFastingHoursForEndDate(endDate) {
   const endRec = records[endDate];
   if (!endRec?.fastEnd) return null;
 
-  const prevDate = dateShift(endDate, -1);
-  const prevRec = records[prevDate];
-  if (!prevRec?.fastStart) return null;
+  const startSource = findStartSourceForEndDate(endDate);
+  if (!startSource) return null;
 
-  const start = parseDateTime(prevDate, prevRec.fastStart);
+  const start = parseDateTime(startSource.date, startSource.fastStart);
   const end = parseDateTime(endDate, endRec.fastEnd);
   if (!start || !end || end <= start) return null;
   return (end - start) / 3600000;
+}
+
+function findStartSourceForEndDate(endDate) {
+  const prevDate = dateShift(endDate, -1);
+  const prevRec = records[prevDate];
+  if (prevRec?.fastStart) {
+    return { date: prevDate, fastStart: prevRec.fastStart };
+  }
+
+  const sortedDates = Object.keys(records).sort((a, b) => b.localeCompare(a));
+  for (const date of sortedDates) {
+    if (date >= endDate) continue;
+    const rec = records[date];
+    if (rec?.fastStart) {
+      return { date, fastStart: rec.fastStart };
+    }
+  }
+  return null;
 }
 
 function renderMonthlySummary() {
